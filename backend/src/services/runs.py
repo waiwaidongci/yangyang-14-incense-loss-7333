@@ -4,11 +4,12 @@ import logging
 from sqlalchemy import select
 
 from src.config.project import SPEC
-from src.constants.enums import Decision, Role, RunStatus
+from src.constants.enums import Decision, Role, RunStatus, VoucherStatus
 from src.domain.analysis import analyze
 from src.models.base import utc_now
-from src.models.workflow import AnalysisRun, AuditEvent, Observation, Review
+from src.models.workflow import AnalysisRun, AuditEvent, CorrectionVoucher, Observation, Review
 from src.services.errors import BusinessError
+from src.services.projection import project_for_run
 from src.services.validation import validated
 
 logger = logging.getLogger(__name__)
@@ -19,11 +20,19 @@ def create_run(db, request, actor):
     sample_ids = list(db.scalars(select(Observation.id).order_by(Observation.id)))
     if not sample_ids:
         raise BusinessError('请先导入观测记录')
+    # 固化发起时点的账：只认此刻已入账的更正单，排队/挂起单不进分析。
+    posted = list(db.scalars(
+        select(CorrectionVoucher).where(CorrectionVoucher.status == VoucherStatus.POSTED)
+        .order_by(CorrectionVoucher.id)))
+    last_voucher_id = posted[-1].id if posted else None
+    voucher_nos = [voucher.voucher_no for voucher in posted]
     item = AnalysisRun(title=request.title, owner=actor, parameters=parameters, observation_ids=sample_ids,
-                       last_observation_id=sample_ids[-1], sample_size=len(sample_ids))
+                       last_observation_id=sample_ids[-1], sample_size=len(sample_ids),
+                       last_voucher_id=last_voucher_id, voucher_nos=voucher_nos)
     db.add(item)
     db.flush()
-    db.add(AuditEvent(actor=actor, action='run.created', detail=f'分析 #{item.id}，固化 {item.sample_size} 条观测'))
+    db.add(AuditEvent(actor=actor, action='run.created',
+                      detail=f'分析 #{item.id}，固化 {item.sample_size} 条观测、{len(voucher_nos)} 张已入账更正单'))
     return item
 
 
@@ -62,11 +71,16 @@ def run_pending(db):
     if item is None:
         return False
     try:
-        sample = list(db.scalars(select(Observation.payload).where(Observation.id.in_(item.observation_ids))
-                                 .order_by(Observation.id)))
+        # 用发起时固化的观测清单与凭证时点重算，后续入账不影响这份分析。
+        sample = project_for_run(db, item.observation_ids, item.last_voucher_id)
         result = analyze(sample, item.parameters)
         if not {'headline', 'summary', 'metrics', 'columns', 'rows'} <= set(result):
             raise RuntimeError('invalid result schema')
+        result['ledger_snapshot'] = {
+            'last_voucher_id': item.last_voucher_id,
+            'voucher_nos': list(item.voucher_nos or []),
+            'basis': '按分析发起时已入账的领退料更正单重算物料费，未入账单据不计入',
+        }
         json.dumps(result, allow_nan=False, ensure_ascii=False)
         item.result = result
         item.status = RunStatus.SUCCEEDED

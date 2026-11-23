@@ -40,4 +40,17 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 分发计划锁定特定已签核快照，按北京时间显示。收件箱可下载真实 CSV，当前收件组是本地交接标签。停机跨过多个周期时补送最早未投递的一期，然后追到下一个将来的周期。新快照需重新签核并建新计划。
 
+## 领退料更正单
+
+库管在「领退料更正」模块登记凭证，把错记的一笔物料费从一批线香双边挪到另一批：扣回批次记贷方、补入批次记等额借方，同事务入账。更正单号唯一且幂等，中断后按原单号重试不会重复扣款；余额不足的凭证整单挂起（`waiting`），不扣成负数、不阻塞无关批次，后续入账补足后由 worker 自动按登记顺序重试。每张凭证借贷相等，物料费总额守恒，`GET /api/ledger/reconcile` 的对账差额恒为 0 分。
+
+分析只采用发起时已入账的凭证（凭证上界与单号清单随分析固化），排队或挂起单不计入；新分析用当前已入账的账，旧结果在「结果与复核」里可回查当时凭证。主要接口：`POST /api/ledger/vouchers`、`GET /api/ledger/vouchers`、`POST /api/ledger/vouchers/retry`、`GET /api/ledger/accounts`、`GET /api/ledger/entries`、`GET /api/ledger/reconcile`。
+
+离线复验仅依赖 Python 标准库（无需数据库或第三方包）：
+
+```sh
+cd backend && ./scripts/run_ledger_tests.sh
+# 或逐个：python3 -I tests/test_ledger_engine.py / test_projection_analysis.py / test_ledger_service.py
+```
+
 许可证为 [MIT](LICENSE)。

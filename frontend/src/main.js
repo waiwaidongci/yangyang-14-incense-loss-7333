@@ -1,6 +1,7 @@
 import { get } from './api/client.js';
 import { frame } from './components/common/frame.js';
 import { analysisPage, wireAnalysis } from './pages/analysis.js';
+import { ledgerPage, wireLedger } from './pages/ledger.js';
 import { loginPage, wireLogin } from './pages/login.js';
 import { observationPage, wireObservations } from './pages/observations.js';
 import { reportPage, wireReports } from './pages/reports.js';
@@ -10,7 +11,7 @@ import { store } from './stores/session.js';
 import { esc } from './utils/html.js';
 
 const root = document.getElementById('app');
-const pages = {observations:observationPage,analysis:analysisPage,result:resultPage,reports:reportPage};
+const pages = {observations:observationPage,ledger:ledgerPage,analysis:analysisPage,result:resultPage,reports:reportPage};
 let navigationTick = 0;
 
 async function render() {
@@ -36,6 +37,7 @@ async function render() {
       render();
     });
     if (current.page === 'observations') wireObservations(root, spec,render);
+    if (current.page === 'ledger') wireLedger(root,render);
     if (current.page === 'analysis') wireAnalysis(root,spec);
     if (current.page === 'result') wireResult(root,render);
     if (current.page === 'reports') wireReports(root,render);
