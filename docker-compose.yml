@@ -1,0 +1,95 @@
+name: yangyang-14-incense-loss
+
+x-python: &python
+  build: ./backend
+  environment:
+    DATABASE_URL: mysql+pymysql://desk:${DB_PASSWORD:-desk-local}@db/desk
+    REDIS_URL: redis://redis:6379/0
+    JWT_SECRET: ${JWT_SECRET:-yangyang-14-incense-loss-local-development-secret}
+    SEED_DEMO: ${SEED_DEMO:-true}
+  volumes:
+    - reports:/artifacts
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  frontend:
+    build: ./frontend
+    container_name: ${COMPOSE_PROJECT_NAME:-yangyang-14-incense-loss}-frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-18383}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1/api/health']
+      interval: 2s
+      timeout: 4s
+      retries: 30
+  backend:
+    <<: *python
+    container_name: ${COMPOSE_PROJECT_NAME:-yangyang-14-incense-loss}-backend
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-19383}:8000"
+    healthcheck:
+      test: [CMD, python, -c, "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health', timeout=2)"]
+      interval: 2s
+      timeout: 4s
+      retries: 45
+  worker:
+    <<: *python
+    container_name: ${COMPOSE_PROJECT_NAME:-yangyang-14-incense-loss}-worker
+    command: [python, -m, src.worker]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -m, src.worker, health]
+      interval: 2s
+      timeout: 4s
+      retries: 45
+  db:
+    container_name: ${COMPOSE_PROJECT_NAME:-yangyang-14-incense-loss}-db
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: desk
+      MYSQL_USER: desk
+      MYSQL_PASSWORD: ${DB_PASSWORD:-desk-local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-desk-root-local}
+    healthcheck:
+      test: [CMD-SHELL, 'MYSQL_PWD="$${MYSQL_PASSWORD}" mysql --protocol=TCP -h127.0.0.1 -udesk -Ddesk -e "SELECT 1"']
+      interval: 2s
+      timeout: 4s
+      retries: 45
+    ports:
+      - "127.0.0.1:${DB_PORT:-17883}:3306"
+    volumes:
+      - database:/var/lib/mysql
+  redis:
+    image: redis:7-alpine
+    container_name: ${COMPOSE_PROJECT_NAME:-yangyang-14-incense-loss}-redis
+    volumes:
+      - broker:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  database:
+  broker:
+  reports:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET:-10.234.143.0/24}

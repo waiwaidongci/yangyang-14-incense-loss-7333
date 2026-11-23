@@ -1,0 +1,22 @@
+{
+  "organization": "谷灯香坊生产与品控组",
+  "tagline": "把线香返工逐批拆到原因，分清每个班组的整改顺序",
+  "source": "返工工时签单、班组人工费率表、物料领退差额台账、品控归因复核单",
+  "record_name": "线香返工复核批次",
+  "algorithm": "批次人工及物料损失的整数分摊与班组累计贡献排序",
+  "formula": "批次人工损失＝返工人分钟×人工费率（分/人小时）÷60，四舍五入到整数分。工时、人工费和物料费各自按原因权重用最大余数法分配。余数相同时依次按干燥开裂、直径偏差、断条、表面毛刺、长短不齐分配。班组累计贡献率＝100×已纳入原因损失÷班组总损失。",
+  "decision_prompt": "哪些原因已覆盖本班组大部分返工损失，分摊后的每一分钱能否回对原始批次？",
+  "fields": [
+    {"key": "batch_code", "label": "返工批次号", "type": "text", "example": "GZ-2611-15", "help": "同一返工批次只录一条，可在同一条记录中填写多个原因。"},
+    {"key": "team", "label": "责任班组", "type": "choice", "choices": ["压线甲班", "干燥乙班", "整理丙班"], "example": "干燥乙班"},
+    {"key": "rework_date", "label": "返工日期", "type": "date", "example": "2026-11-16"},
+    {"key": "labor_minutes", "label": "返工工时（人分钟）", "type": "integer", "min": 0, "max": 10080, "example": 75, "help": "同一批次多工人返工时，填写各人工时之和。"},
+    {"key": "hourly_labor_cents", "label": "人工费率（分/人小时）", "type": "integer", "min": 1, "max": 100000, "example": 4513, "help": "45.13 元/人小时填 4513。"},
+    {"key": "material_cents", "label": "净物料损失（分）", "type": "integer", "min": 0, "max": 10000000, "example": 12503, "help": "填写领料成本扣除可用退料后的金额，125.03 元填 12503。"},
+    {"key": "cause_weights", "label": "原因与权重", "type": "text", "example": "干燥开裂=3,断条=2,表面毛刺=1", "help": "填写 原因=正整数，以逗号分隔。支持干燥开裂、直径偏差、断条、表面毛刺、长短不齐。权重 1–1000，可不合计到 100。"},
+    {"key": "review_note", "label": "复核备注", "type": "text", "required": false, "example": "11 月 16 日早班补录，物料金额已扣除退料"}
+  ],
+  "parameters": [
+    {"key": "priority_coverage_pct", "label": "班组优先整改覆盖率（%）", "type": "integer", "min": 1, "max": 100, "default": 80, "help": "按原因损失从高到低纳入整改清单，保留使未取整累计贡献达到阈值的那一项。"}
+  ]
+}
